@@ -24,6 +24,7 @@ int main(){
     printf("STREAM\n");
     printf("INFO <filename>\n");
     printf("COPY <filename1> <filename2>\n");
+    printf("ASYNC_WRITE <filename>\n");
     printf("END\n");
     printf("-----------------------------------------\n");
     while(1){
