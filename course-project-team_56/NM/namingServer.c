@@ -158,7 +158,7 @@ void *client_handler(void *arg){
         printf("modified path recieved: %s\n", packet.path1);
 
         // LRU cache implementation in create request.
-        CacheNode* entry = getFromCache(cache, packet.path1)
+        CacheNode* entry = getFromCache(cache, packet.path1);
         int SS_id;
         if(entry){
             SS_id = entry->SS_id;

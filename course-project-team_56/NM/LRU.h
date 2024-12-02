@@ -30,26 +30,26 @@ typedef struct LRUCache {
 unsigned int hash(const char *str, int size);
 
 // Create a new cache node
-CacheNode *createCacheNode(const char *fileName, const char *ip, int port);
+CacheNode *createCacheNode(const char *fileName, int SS_id);
 
 // Initialize hash map
 HashMap *initHashMap(int size);
 
 // Initialize LRU cache
-LRUCache *initLRUCache(int capacity);
+LRUCache *initLRUCache();
 
 // Move node to front of the list
 void moveToHead(LRUCache *cache, CacheNode *node);
-
 // Remove the least recently used node
 void removeTail(LRUCache *cache);
 
 // Add a new node to the cache
-void addToCache(LRUCache *cache, const char *fileName, const char *ip, int port);
+void addToCache(LRUCache *cache, const char *fileName, int SS_id);
 
 // Get file details from the cache
 CacheNode *getFromCache(LRUCache *cache, const char *fileName);
 
 void printCache(LRUCache *cache);
+
 
 #endif

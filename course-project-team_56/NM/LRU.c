@@ -28,7 +28,7 @@ HashMap *initHashMap(int size) {
 LRUCache *initLRUCache() {
     LRUCache *cache = (LRUCache *)malloc(sizeof(LRUCache));
     cache->head = cache->tail = NULL;
-    cache->hashMap = initHashMap(capacity * 2);
+    cache->hashMap = initHashMap(CACHE_CAPACITY * 2);
     cache->capacity = CACHE_CAPACITY;
     cache->currentSize = 0;
     return cache;
