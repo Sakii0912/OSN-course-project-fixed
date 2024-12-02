@@ -306,10 +306,10 @@ int send_req_to_ss(char *ss_ip, int ss_port, PACKET *CLtoSS)
         send_bytes = send(ss_fd, CLtoSS, sizeof(PACKET), 0);
         
 
-        printf("Enter the data (empty newline to stop writing data)\n");
+        printf("Enter the data\n");
         char inpdata[MAX_DATA_SIZE];
         int count_packets = 0;
-        scanf("%s", inpdata);
+        scanf(" %[^\n]", inpdata);
         int sizeofdata = strlen(inpdata);
         printf("Size of data entered is %d\n", sizeofdata);
         fflush(stdout);

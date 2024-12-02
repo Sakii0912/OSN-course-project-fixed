@@ -117,6 +117,18 @@ void *status_handler(void *args){
         printf("recv failed\n");
         return NULL;
     }
+    FILE* fptr = fopen("status.txt", "a");
+    if(fptr == NULL){
+        printf("File open failed\n");
+        return NULL;
+    }
+    // writing status to file
+    fprintf(fptr, "Status : %d\n", packet.status);
+    fprintf(fptr, "Request type : %d\n", packet.request_type);
+    fprintf(fptr, "IP : %s\n", packet.IP);
+    fprintf(fptr, "PORT : %d\n", packet.PORT);
+    fprintf(fptr, "\n\n");
+    fclose(fptr);
     // printf("Struct type: %d\n", struct_type);
     printf("Status handler connected\n");
     printf("Status : %d\n", packet.status);
@@ -397,6 +409,7 @@ void *client_handler(void *arg){
         if(entry){
             SS_id = entry->SS_id;
             printf("Cache hit for path: %s\n", packet.path1);
+            printf("SS_id: %d\n", SS_id);
         }
         else{
 
@@ -546,15 +559,16 @@ void *client_handler(void *arg){
         // create a data packet and send it to the client, in the data packet, send data which has all the files and directories concatenated, separated by '\n'
 
         Data_Packet D;
+        strcpy(D.data, "");
         for (int i = 0; i < file_count; i++)
         {
-            strcpy(D.data, files[i]);
+            strcat(D.data, files[i]);
             strcat(D.data, "\n");
         }
 
         for (int i = 0; i < dir_count; i++)
         {
-            strcpy(D.data, dirs[i]);
+            strcat(D.data, dirs[i]);
             strcat(D.data, "\n");
         }
 
