@@ -107,6 +107,8 @@ int NS_PORT;
 // }
 
 void *status_handler(void *args){
+
+    printf("---------------STATUS HANDLER----------------\n");
     PACKET packet;
 
     int ss_fd = *(int *)args;
@@ -136,7 +138,10 @@ void *status_handler(void *args){
 
     pthread_mutex_unlock(&socket_Rlock);
 
+    printf("--------------------------------------------\n");
+
     pthread_exit(NULL);
+
 }
 
 // Function to handle the client requests
@@ -405,6 +410,7 @@ void *client_handler(void *arg){
         }
 
         CacheNode* entry = getFromCache(cache, packet.path1);
+        printf("CACHE\n");
         int SS_id;
         if(entry){
             SS_id = entry->SS_id;
@@ -586,6 +592,10 @@ void *client_handler(void *arg){
     }
     else if (packet.request_type == COPY_REQUEST)
     {
+
+        printf("\033[0;32mSource : %s\n\033[0m", packet.path1);  
+        printf("\033[0;32mDestination : %s\n\033[0m", packet.path2);
+
         pthread_mutex_unlock(&socket_Rlock);
 
         printf("Copy request received\n");
@@ -606,7 +616,7 @@ void *client_handler(void *arg){
         }
         else
         {
-            temp_name_for_processing = processString(packet.path1);
+            temp_name_for_processing = processString(packet.path2);
             strcpy(packet.path2, temp_name_for_processing);
         }
 
@@ -659,22 +669,38 @@ void *client_handler(void *arg){
 
         // destination can't be a file when the source is a directory
 
-        if (!is1_file && is2_file)
+        if (!is1_file && is2_file)  // source is a directory, destination is a file
         {
             // send the error packet to the client
             int struct_type = PACKET_STRUCT;
             pthread_mutex_lock(&socket_Wlock);
             send(client_fd, &struct_type, sizeof(int), 0);
             PACKET response_packet;
-            response_packet.status = FILE_NOT_FOUND;
+            response_packet.status = INVALID_REQUEST;
             response_packet.request_type = STATUS_CHECK;
             strcpy(response_packet.IP, packet.IP);
             response_packet.PORT = packet.PORT;
             strcpy(response_packet.path1, packet.path1);
             send(client_fd, &response_packet, sizeof(PACKET), 0);
             pthread_mutex_unlock(&socket_Wlock);
+
             return NULL;
         }
+        // {
+        //     // send the error packet to the client
+        //     int struct_type = PACKET_STRUCT;
+        //     pthread_mutex_lock(&socket_Wlock);
+        //     send(client_fd, &struct_type, sizeof(int), 0);
+        //     PACKET response_packet;
+        //     response_packet.status = FILE_NOT_FOUND;
+        //     response_packet.request_type = STATUS_CHECK;
+        //     strcpy(response_packet.IP, packet.IP);
+        //     response_packet.PORT = packet.PORT;
+        //     strcpy(response_packet.path1, packet.path1);
+        //     send(client_fd, &response_packet, sizeof(PACKET), 0);
+        //     pthread_mutex_unlock(&socket_Wlock);
+        //     return NULL;
+        // }
 
         // send the success packet to the client, with the IP and port of the SS
 
@@ -693,29 +719,266 @@ void *client_handler(void *arg){
         if (is1_file && is2_file)
         { // send a read request to the source, write to the destination
 
+            printf("\033[0;32mSource (1): %s\n\033[0m", packet.path1);  
+            printf("\033[0;32mDestination (1): %s\n\033[0m", packet.path2);
+
             printf("Copying file to file\n");
 
             cpyFile(packet.path1, packet.path2, SS_id_1, SS_id_2);
         }
-        else if (is1_file && !is2_file)
+        else if (is1_file && !is2_file)     // source is a file, destination is a directory, have to create a file first
         { // send a read request to the source, write to the destination
 
-            // first create the file in the destination
+            // first check if a file with the same name exists in the destination
+
+            char temp_path[MAX_FILEPATH_SIZE];
+            strcpy(temp_path, packet.path1);
+            
+            // tokenisation of the path, as to get only the file name
+
+            char token2[MAX_FILEPATH_SIZE];
+            char *token = strtok(temp_path, "/");
+            while (token != NULL)
+            {
+                strcpy(temp_path, token);
+                strcpy(token2, token);
+                token = strtok(NULL, "/");
+                if(token == NULL){
+                    break;
+                }
+            }
+
+            strcpy(temp_path, packet.path2);
+            strcat(temp_path, "/");
+            strcat(temp_path, token2);
+
+            int SS_id_3 = write_request_finder(temp_path);
+            
+            if(SS_id_3 == -1)
+            {
+                // file doesn't exist, create the file in the destination
+
+                printf("Copying file to directory\n");
+
+                // first create a CREATE request for the destination
+
+                PACKET create_packet;
+                create_packet.request_type = CREATE_REQUEST;
+                strcpy(create_packet.IP, NS_IP);
+                create_packet.PORT = NS_PORT;
+                strcpy(create_packet.path1, temp_path);
+
+                // send it to the Storage Server whose SS_id is SS_id_2
+
+                // create the socket connection
+
+                int struct_type = PACKET_STRUCT;
+
+                struct sockaddr_in source_addr;
+                int SS_fd;  // socket for the SS to whom the create request is to be sent   
+
+                if ((SS_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+                {
+                    printf("Socket creation failed\n");
+                    return NULL;
+                }
+
+                // Server address configuration
+
+                memset(&source_addr, 0, sizeof(source_addr));
+                source_addr.sin_family = AF_INET;
+                source_addr.sin_port = htons(S[SS_id_2].client_port);
+                if (inet_pton(AF_INET, S[SS_id_2].client_port, &source_addr.sin_addr) <= 0)
+                {
+                    perror("Invalid address/ Address not supported");
+                    return NULL;
+                }
+
+                if(connect(SS_fd, (struct sockaddr *)&source_addr, sizeof(source_addr)) == -1){
+                    perror("Connect failed");
+                    return NULL;
+                }
+
+                pthread_mutex_lock(&socket_Wlock_2);
+
+                send(SS_fd, &struct_type, sizeof(int), 0);
+                send(SS_fd, &create_packet, sizeof(PACKET), 0);
+
+                pthread_mutex_unlock(&socket_Wlock_2);   
+
+                // close the socket connection
+
+                close(SS_fd);  
+
+                // add the file to the destination SS's trie
+
+                insert(S[SS_id_2].files, temp_path);
+
+                // now copy the file from the source to the destination
+
+                cpyFile(packet.path1, temp_path, SS_id_1, SS_id_2);
+
+                return NULL;
+
+            }
+            else
+            {
+                // file exists, send the error packet to the client
+                int struct_type = PACKET_STRUCT;
+                pthread_mutex_lock(&socket_Wlock);
+                send(client_fd, &struct_type, sizeof(int), 0);
+                PACKET response_packet;
+                response_packet.status = FILE_ALREADY_EXISTS;
+                response_packet.request_type = STATUS_CHECK;
+                strcpy(response_packet.IP, packet.IP);
+                response_packet.PORT = packet.PORT;
+                strcpy(response_packet.path1, packet.path1);
+                send(client_fd, &response_packet, sizeof(PACKET), 0);
+                pthread_mutex_unlock(&socket_Wlock);
+
+                return NULL;
+
+            }
+        }
+        else if(!is1_file && !is2_file) // source and destination are directories
+        {
+            printf("Copying directory to directory\n");
+
+            // first create a CREATE request for the destination
+
+            int number_of_source_dirs;
+            int number_of_source_files;
+
+            char** source_dirs = findWordsWithSubstring(S[SS_id_1].dirs, packet.path1, &number_of_source_dirs);
+            char** source_files = findWordsWithSubstring(S[SS_id_1].files, packet.path1, &number_of_source_files);
+
+            // modify the path, to get the destination path, by subtracting the source path and appending it to the destination path
+
+            // first create the directories
+
+            // create a socket connection with the destination SS, which is SS_id_2
 
             int struct_type = PACKET_STRUCT;
-            PACKET create_packet;
-            create_packet.request_type = CREATE_REQUEST;
-            strcpy(create_packet.IP, NS_IP);
-            create_packet.PORT = NS_PORT;
-            strcpy(create_packet.path1, packet.path2);
-            strcpy(create_packet.path2, packet.path2);
 
-            pthread_mutex_lock(&socket_Wlock);
-            send(S[SS_id_2].SS_Client_socket, &struct_type, sizeof(int), 0);
-            send(S[SS_id_2].SS_Client_socket, &create_packet, sizeof(PACKET), 0);
-            pthread_mutex_unlock(&socket_Wlock);
+            struct sockaddr_in source_addr;
+            int SS_fd;  // socket for the SS to whom the create request is to be sent
 
-            // send the read request to the source
+            if ((SS_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+            {
+                printf("Socket creation failed\n");
+                return NULL;
+            }
+
+            // Server address configuration
+
+            memset(&source_addr, 0, sizeof(source_addr));
+            source_addr.sin_family = AF_INET;
+            source_addr.sin_port = htons(S[SS_id_2].client_port);
+            if (inet_pton(AF_INET, S[SS_id_2].client_port, &source_addr.sin_addr) <= 0)
+            {
+                perror("Invalid address/ Address not supported");
+                return NULL;
+            }
+
+            if(connect(SS_fd, (struct sockaddr *)&source_addr, sizeof(source_addr)) == -1){
+                perror("Connect failed");
+                return NULL;
+            }
+
+            char temp_dir_path[MAX_FILEPATH_SIZE];
+
+            for(int i = 0; i<number_of_source_dirs; i++)
+            {
+
+                if(strcmp(source_dirs[i], packet.path1) == 0){
+                    continue;
+                }
+
+                strcpy(temp_dir_path, packet.path2);
+                strcat(temp_dir_path, "/");
+                
+                char* path_rel = sub_strings(source_dirs[i], packet.path1);
+                strcat(temp_dir_path, path_rel);
+
+                printf("Creating directory: %s\n", temp_dir_path);
+
+                // first create a CREATE request for the destination
+
+                PACKET create_packet;
+                create_packet.request_type = CREATE_REQUEST;
+                strcpy(create_packet.IP, NS_IP);
+                create_packet.PORT = NS_PORT;
+                strcpy(create_packet.path1, temp_dir_path);
+
+                pthread_mutex_lock(&socket_Wlock_2);
+
+                send(SS_fd, &struct_type, sizeof(int), 0);
+                send(SS_fd, &create_packet, sizeof(PACKET), 0);
+
+                pthread_mutex_unlock(&socket_Wlock_2);
+
+                // add the directory to the destination SS's trie, if it doesn't already exist
+
+                if(!search(S[SS_id_2].dirs, temp_dir_path)){
+                    insert(S[SS_id_2].dirs, temp_dir_path);
+                }
+
+            }
+
+            // now create and subsequently copy the files
+
+            char temp_file_path[MAX_FILEPATH_SIZE];
+
+            for(int i = 0; i<number_of_source_files; i++)
+            {
+                    
+                    strcpy(temp_file_path, packet.path2);
+                    strcat(temp_file_path, "/");
+                    
+                    char* path_rel = sub_strings(source_files[i], packet.path1);
+                    strcat(temp_file_path, path_rel);
+    
+                    printf("Copying file: %s\n", temp_file_path);
+    
+                    // first create a CREATE request for the destination
+    
+                    PACKET create_packet;
+                    create_packet.request_type = CREATE_REQUEST;
+                    strcpy(create_packet.IP, NS_IP);
+                    create_packet.PORT = NS_PORT;
+                    strcpy(create_packet.path1, temp_file_path);
+    
+                    pthread_mutex_lock(&socket_Wlock_2);
+    
+                    send(SS_fd, &struct_type, sizeof(int), 0);
+                    send(SS_fd, &create_packet, sizeof(PACKET), 0);
+    
+                    pthread_mutex_unlock(&socket_Wlock_2);
+    
+                    // add the file to the destination SS's trie
+    
+                    insert(S[SS_id_2].files, temp_file_path);
+    
+                    // now copy the file from the source to the destination
+    
+                    cpyFile(source_files[i], temp_file_path, SS_id_1, SS_id_2);
+            }
+
+            close(SS_fd);
+
+            for(int i = 0; i<number_of_source_dirs; i++){
+                free(source_dirs[i]);
+            }
+
+            for(int i = 0; i<number_of_source_files; i++){
+                free(source_files[i]);
+            }
+
+            free(source_dirs);
+            free(source_files);
+
+            return NULL;
+            
         }
     }
     else if (packet.request_type == STATUS_CHECK)

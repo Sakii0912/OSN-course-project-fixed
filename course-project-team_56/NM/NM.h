@@ -92,6 +92,8 @@ void printWords(TrieNode* root);
 
 char* processString(const char* input);
 
+char* sub_strings(const char* str1, const char* str2);
+
 // for both get all words and find words with substring, a single free function is enough
 
 #endif

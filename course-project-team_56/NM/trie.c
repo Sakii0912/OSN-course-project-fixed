@@ -190,11 +190,10 @@ void collectWords(TrieNode* node, char* buffer, int level, char** result, int* i
 int countWordsWithSubstring(struct TrieNode* root, const char* sub);
 
 // Function to find all words that contain the given substring
-// Function to find all words that contain the given substring
 char** findWordsWithSubstring(struct TrieNode* root, char* sub, int* resultCount) {
     struct TrieNode* curr = root;
     const char* tempSub = sub;
-    int index = 0;
+    int index = 0;  
     *resultCount = 0;
 
     // Traverse the Trie based on `sub` characters

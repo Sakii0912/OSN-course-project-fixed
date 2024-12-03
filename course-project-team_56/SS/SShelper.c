@@ -65,7 +65,7 @@ int* initSS(char** files, char** dirs, char** permitted, int n) {
             snprintf(temp, sizeof(temp), "%s/%s", Q->Quu[pt], dir->d_name);
 
             if (dir->d_type == DT_DIR) {
-                if (get_user_confirmation(temp, "directory")) {
+                // if (get_user_confirmation(temp, "directory")) {
                     en_q(Q, temp);  // Add directory to the queue
                     dirs[arr[1]] = (char*)malloc(sizeof(char) * MAX_FILEPATH_SIZE);
                     if (dirs[arr[1]] == NULL) {
@@ -73,16 +73,16 @@ int* initSS(char** files, char** dirs, char** permitted, int n) {
                         continue;
                     }
                     strcpy(dirs[arr[1]++], temp);
-                }
+                // }
             } else if (dir->d_type == DT_REG) {
-                if (get_user_confirmation(temp, "file")) {
+                // if (get_user_confirmation(temp, "file")) {
                     files[arr[0]] = (char*)malloc(sizeof(char) * MAX_FILEPATH_SIZE);
                     if (files[arr[0]] == NULL) {
                         fprintf(stderr, "Memory allocation failed for file\n");
                         continue;
                     }
                     strcpy(files[arr[0]++], temp);
-                }
+                // }
             }
         }
 

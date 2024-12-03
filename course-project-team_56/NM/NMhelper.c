@@ -498,6 +498,12 @@ void cpyFile(char* file_name1, char* file_name2, int source, int destination)
 
     printf("Data received\n");
 
+    printf("--------------------\n");
+    for(int i = 0; i<counter; i++){
+        printf("%s", data[i]);
+    }
+    printf("--------------------\n");
+
     pthread_mutex_unlock(&socket_Rlock_2);
 
     // write request to the destination SS
@@ -553,11 +559,22 @@ void cpyFile(char* file_name1, char* file_name2, int source, int destination)
     }
 
     pthread_mutex_unlock(&socket_Wlock_2);
+
+    printf("Data sent\n");
+
     close(dest_fd);
 
     return;
 
 }
 
+char* sub_strings(const char* str1, const char* str2){  // str1 - str2
+    char* pos = strstr(str1, str2);
+    int result_len = strlen(str1) - strlen(str2);
+    char* result = (char*)malloc(result_len + 1);
+    strcpy(result, pos + strlen(str2));
+    result[result_len] = '\0';
+    return result;
+}
 
 // Function to handle the SS requests

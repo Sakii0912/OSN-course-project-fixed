@@ -882,6 +882,7 @@ void Write(int client, PACKET buffer, char** data, int NS_fd, int n) // Should d
     int client_port = ntohs(client_addr.sin_port);
 
     // Check if the file exists in the storage server. If it exists, then truncate and write to it.
+    printf("------------Path: %s\n------------", buffer.path1);
     int file_fd = open(buffer.path1, O_WRONLY | O_APPEND | O_TRUNC);
     if(file_fd < 0)
     {
@@ -977,6 +978,9 @@ void Write(int client, PACKET buffer, char** data, int NS_fd, int n) // Should d
     }
     free(data);
     close(file_fd);
+
+    printf("Write Completed\n");
+
 }
 
 int is_file(char *path)
