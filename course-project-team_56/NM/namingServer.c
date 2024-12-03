@@ -788,7 +788,7 @@ void *client_handler(void *arg){
                 memset(&source_addr, 0, sizeof(source_addr));
                 source_addr.sin_family = AF_INET;
                 source_addr.sin_port = htons(S[SS_id_2].client_port);
-                if (inet_pton(AF_INET, S[SS_id_2].client_port, &source_addr.sin_addr) <= 0)
+                if (inet_pton(AF_INET, S[SS_id_2].client_ip, &source_addr.sin_addr) <= 0)
                 {
                     perror("Invalid address/ Address not supported");
                     return NULL;
@@ -874,7 +874,7 @@ void *client_handler(void *arg){
             memset(&source_addr, 0, sizeof(source_addr));
             source_addr.sin_family = AF_INET;
             source_addr.sin_port = htons(S[SS_id_2].client_port);
-            if (inet_pton(AF_INET, S[SS_id_2].client_port, &source_addr.sin_addr) <= 0)
+            if (inet_pton(AF_INET, S[SS_id_2].client_ip, &source_addr.sin_addr) <= 0)
             {
                 perror("Invalid address/ Address not supported");
                 return NULL;
