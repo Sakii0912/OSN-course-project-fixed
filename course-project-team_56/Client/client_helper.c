@@ -179,6 +179,7 @@ int send_req_to_ss(char *ss_ip, int ss_port, PACKET *CLtoSS)
     }
     printf("Connected To SS\n");
     int send_bytes = 0;
+    int tempvar = 0;
     // Send the request to the server
     if (CLtoSS->request_type != WRITE_REQUEST)
     {
@@ -251,6 +252,9 @@ int send_req_to_ss(char *ss_ip, int ss_port, PACKET *CLtoSS)
                 return -1;
             }
             printf("Type of struct: %d\n", typeofstruct);
+            if(CLtoSS->request_type == READ_REQUEST || CLtoSS->request_type == STREAM_REQUEST){
+                typeofstruct = DATA_PACKET_STRUCT;
+            }
             if (typeofstruct == PACKET_STRUCT)
             {
                 PACKET *SStoCL = init_PACKET(0, -1, "", "");
@@ -267,6 +271,7 @@ int send_req_to_ss(char *ss_ip, int ss_port, PACKET *CLtoSS)
                 free(SStoCL);
                 // break;
             }
+
             if (typeofstruct == DATA_PACKET_STRUCT)
             {
                 Data_Packet *SStoCL = init_Data_Packet(0, CLtoSS->request_type, -1);
@@ -277,6 +282,7 @@ int send_req_to_ss(char *ss_ip, int ss_port, PACKET *CLtoSS)
                 }
                 int bytes_recieved;
                 bytes_recieved = recv(ss_fd, SStoCL, sizeof(*SStoCL), 0);
+
                 if(bytes_recieved > 0)
                 {
                     if (SStoCL->request_type != STREAM_REQUEST)
@@ -370,7 +376,6 @@ int send_req_to_ss(char *ss_ip, int ss_port, PACKET *CLtoSS)
         int struct_type;
         
         int bytes = recv(ss_fd, &struct_type, sizeof(int), 0);
-        
         if (bytes < 0)
         {
             printf("rend_req_to_ss : recv failed around 266\n");
