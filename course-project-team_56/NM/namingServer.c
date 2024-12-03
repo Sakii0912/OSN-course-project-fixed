@@ -175,107 +175,98 @@ void *client_handler(void *arg){
         printf("modified path recieved: %s\n", packet.path1);
 
         // LRU cache implementation in create request.
-        CacheNode* entry = getFromCache(cache, packet.path1);
-        int SS_id;
-        if(entry){
-            SS_id = entry->SS_id;
-            printf("Cache hit for path: %s\n", packet.path1);
+        int SS_id = create_request_finder(packet.path1);
+        if (SS_id == -1)
+        {
+            // send the error message to the client
+
+            printf("Create request failed\n");
+
+            int struct_type = PACKET_STRUCT;
+            pthread_mutex_lock(&socket_Wlock);
+
+            send(client_fd, &struct_type, sizeof(int), 0);
+            PACKET response_packet;
+            response_packet.status = FILE_NOT_FOUND;
+            response_packet.request_type = STATUS_CHECK;
+
+            strcpy(response_packet.IP, packet.IP);
+            response_packet.PORT = packet.PORT;
+            strcpy(response_packet.path1, packet.path1);
+            send(client_fd, &response_packet, sizeof(PACKET), 0);
+            pthread_mutex_unlock(&socket_Wlock);
+
+            close(client_fd);
+
+            return NULL;
         }
-        else{
-            SS_id = create_request_finder(packet.path1);
-            if (SS_id == -1)
+        else
+        {
+            printf("Create request found\n");
+            // send the success packet to the client, with the IP and port of the SS
+            int struct_type = PACKET_STRUCT;
+            pthread_mutex_lock(&socket_Wlock);
+            send(client_fd, &struct_type, sizeof(int), 0);
+            PACKET response_packet;
+            response_packet.status = SUCCESS;
+            response_packet.request_type = STATUS_CHECK;
+            strcpy(response_packet.IP, S[SS_id].client_ip);
+            response_packet.PORT = S[SS_id].client_port;
+            strcpy(response_packet.path1, packet.path1);
+            send(client_fd, &response_packet, sizeof(PACKET), 0);
+            pthread_mutex_unlock(&socket_Wlock);
+
+            printf("Create request successful, sent back to client\n");
+
+            close(client_fd);
+
+            // add the file to the SS's trie
+
+            char path_to_add[MAX_FILEPATH_SIZE];
+            strcpy(path_to_add, packet.path1);
+            strcat(path_to_add, "/");
+            strcat(path_to_add, packet.path2);
+            char path[MAX_FILEPATH_SIZE];
+            strcpy(path, packet.path2);
+
+            if (strstr(path, ".") == NULL)
             {
-                // send the error message to the client
-
-                printf("Create request failed\n");
-
-                int struct_type = PACKET_STRUCT;
-                pthread_mutex_lock(&socket_Wlock);
-
-                send(client_fd, &struct_type, sizeof(int), 0);
-                PACKET response_packet;
-                response_packet.status = FILE_NOT_FOUND;
-                response_packet.request_type = STATUS_CHECK;
-
-                strcpy(response_packet.IP, packet.IP);
-                response_packet.PORT = packet.PORT;
-                strcpy(response_packet.path1, packet.path1);
-                send(client_fd, &response_packet, sizeof(PACKET), 0);
-                pthread_mutex_unlock(&socket_Wlock);
-
-                close(client_fd);
-
-                return NULL;
+                insert(S[SS_id].dirs, path_to_add);
             }
             else
             {
-
-                printf("Create request found\n");
-                addToCache(cache, packet.path1, SS_id);
-                // send the success packet to the client, with the IP and port of the SS
-                int struct_type = PACKET_STRUCT;
-                pthread_mutex_lock(&socket_Wlock);
-                send(client_fd, &struct_type, sizeof(int), 0);
-                PACKET response_packet;
-                response_packet.status = SUCCESS;
-                response_packet.request_type = STATUS_CHECK;
-                strcpy(response_packet.IP, S[SS_id].client_ip);
-                response_packet.PORT = S[SS_id].client_port;
-                strcpy(response_packet.path1, packet.path1);
-                send(client_fd, &response_packet, sizeof(PACKET), 0);
-                pthread_mutex_unlock(&socket_Wlock);
-
-                printf("Create request successful, sent back to client\n");
-
-                close(client_fd);
-
-                // add the file to the SS's trie
-
-                char path_to_add[MAX_FILEPATH_SIZE];
-                strcpy(path_to_add, packet.path1);
-                strcat(path_to_add, "/");
-                strcat(path_to_add, packet.path2);
-                char path[MAX_FILEPATH_SIZE];
-                strcpy(path, packet.path2);
-
-                if (strstr(path, ".") == NULL)
-                {
-                    insert(S[SS_id].dirs, path_to_add);
-                }
-                else
-                {
-                    insert(S[SS_id].files, path_to_add);
-                }
-
-                // send the request packet to the backup SS, with the naming server IP and port
-                struct_type = PACKET_STRUCT;
-                // pthread_mutex_lock(&socket_Wlock);
-                PACKET backup_packet;
-                backup_packet.request_type = CREATE_REQUEST;
-                strcpy(backup_packet.IP, NS_IP);
-                backup_packet.PORT = NS_PORT;
-                strcpy(backup_packet.path1, packet.path1);
-                strcpy(backup_packet.path2, packet.path2);
-                if (S[SS_id].backupID_1 != -1)
-                {
-                    pthread_mutex_lock(&socket_Wlock);
-
-                    // connect(S[S[SS_id].backupID_1].SS_Client_socket, (struct sockaddr *)&(S[S[SS_id].backupID_1].SS_addr), sizeof(S[S[SS_id].backupID_1].SS_addr));
-
-                    send(S[S[SS_id].backupID_1].SS_Client_socket, &struct_type, sizeof(int), 0);
-                    send(S[S[SS_id].backupID_1].SS_Client_socket, &backup_packet, sizeof(PACKET), 0);
-                    pthread_mutex_unlock(&socket_Wlock);
-                }
-                if (S[SS_id].backupID_2 != -1)
-                {
-                    pthread_mutex_lock(&socket_Wlock);
-                    send(S[S[SS_id].backupID_2].SS_Client_socket, &struct_type, sizeof(int), 0);
-                    send(S[S[SS_id].backupID_2].SS_Client_socket, &backup_packet, sizeof(PACKET), 0);
-                    pthread_mutex_unlock(&socket_Wlock);
-                }
-
-                return NULL;
+                insert(S[SS_id].files, path_to_add);
             }
+            addToCache(cache, path_to_add, SS_id);
+            // send the request packet to the backup SS, with the naming server IP and port
+            struct_type = PACKET_STRUCT;
+            // pthread_mutex_lock(&socket_Wlock);
+            PACKET backup_packet;
+            backup_packet.request_type = CREATE_REQUEST;
+            strcpy(backup_packet.IP, NS_IP);
+            backup_packet.PORT = NS_PORT;
+            strcpy(backup_packet.path1, packet.path1);
+            strcpy(backup_packet.path2, packet.path2);
+            if (S[SS_id].backupID_1 != -1)
+            {
+                pthread_mutex_lock(&socket_Wlock);
+
+                // connect(S[S[SS_id].backupID_1].SS_Client_socket, (struct sockaddr *)&(S[S[SS_id].backupID_1].SS_addr), sizeof(S[S[SS_id].backupID_1].SS_addr));
+
+                send(S[S[SS_id].backupID_1].SS_Client_socket, &struct_type, sizeof(int), 0);
+                send(S[S[SS_id].backupID_1].SS_Client_socket, &backup_packet, sizeof(PACKET), 0);
+                pthread_mutex_unlock(&socket_Wlock);
+            }
+            if (S[SS_id].backupID_2 != -1)
+            {
+                pthread_mutex_lock(&socket_Wlock);
+                send(S[S[SS_id].backupID_2].SS_Client_socket, &struct_type, sizeof(int), 0);
+                send(S[S[SS_id].backupID_2].SS_Client_socket, &backup_packet, sizeof(PACKET), 0);
+                pthread_mutex_unlock(&socket_Wlock);
+            }
+
+            return NULL;
+        
         }
     }
     else if (packet.request_type == DELETE_REQUEST)
@@ -303,96 +294,100 @@ void *client_handler(void *arg){
         if (entry) {
             SS_id = entry->SS_id;
             printf("Cache hit for path: %s\n", packet.path1);
+            printf("SS_id: %d\n", SS_id);
+            printCache(cache);
         } 
         else{
             SS_id = write_request_finder(packet.path1); // file
-            if (SS_id == -1)
-            {
-                SS_id = dir_request_finder(packet.path1); // directory
-                flag_dir = 1;
-            }
+        }
+        if (SS_id == -1)
+        {
+            SS_id = dir_request_finder(packet.path1); // directory
+            flag_dir = 1;
+        }
 
-            printf("SS_id: %d\n", SS_id);
+        printf("SS_id: %d\n", SS_id);
 
-            if (SS_id == -1)
-            {
+        if (SS_id == -1)
+        {
 
-                printf("Delete request failed\n");
+            printf("Delete request failed\n");
 
-                // send the error packet to the client
-                int struct_type = PACKET_STRUCT;
-                pthread_mutex_lock(&socket_Wlock);
-                send(client_fd, &struct_type, sizeof(int), 0);
-                PACKET response_packet;
-                strcpy(S[SS_id].client_ip, packet.IP);
-                response_packet.status = FILE_NOT_FOUND;
-                response_packet.request_type = STATUS_CHECK;
-                strcpy(response_packet.IP, packet.IP);
-                response_packet.PORT = S[SS_id].client_port;
-                strcpy(response_packet.path1, packet.path1);
-                send(client_fd, &response_packet, sizeof(PACKET), 0);
-                pthread_mutex_unlock(&socket_Wlock);
+            // send the error packet to the client
+            int struct_type = PACKET_STRUCT;
+            pthread_mutex_lock(&socket_Wlock);
+            send(client_fd, &struct_type, sizeof(int), 0);
+            PACKET response_packet;
+            strcpy(S[SS_id].client_ip, packet.IP);
+            response_packet.status = FILE_NOT_FOUND;
+            response_packet.request_type = STATUS_CHECK;
+            strcpy(response_packet.IP, packet.IP);
+            response_packet.PORT = S[SS_id].client_port;
+            strcpy(response_packet.path1, packet.path1);
+            send(client_fd, &response_packet, sizeof(PACKET), 0);
+            pthread_mutex_unlock(&socket_Wlock);
 
-                close(client_fd);
+            close(client_fd);
 
-                return NULL;
+            return NULL;
+        }
+        else
+        {
+            addToCache(cache, packet.path1, SS_id);
+            printCache(cache);
+            // send the success packet to the client, with the IP and port of the SS
+            int struct_type = PACKET_STRUCT;
+            pthread_mutex_lock(&socket_Wlock);
+            send(client_fd, &struct_type, sizeof(int), 0);
+            PACKET response_packet;
+            response_packet.status = SUCCESS;
+            response_packet.request_type = STATUS_CHECK;
+            strcpy(response_packet.IP, S[SS_id].client_ip);
+            response_packet.PORT = S[SS_id].client_port;
+            strcpy(response_packet.path1, packet.path1);
+            send(client_fd, &response_packet, sizeof(PACKET), 0);
+            // addToCache(cache, packet.path1, S[SS_id].client_ip, S[SS_id].client_port);
+            // printCache(cache);
+            pthread_mutex_unlock(&socket_Wlock);
+
+            close(client_fd);
+
+            if (flag_dir)
+            { // it's a directory
+                deleteString(S[SS_id].dirs, packet.path1);
             }
             else
             {
-                addToCache(cache, packet.path1, SS_id);
-                // send the success packet to the client, with the IP and port of the SS
-                int struct_type = PACKET_STRUCT;
-                pthread_mutex_lock(&socket_Wlock);
-                send(client_fd, &struct_type, sizeof(int), 0);
-                PACKET response_packet;
-                response_packet.status = SUCCESS;
-                response_packet.request_type = STATUS_CHECK;
-                strcpy(response_packet.IP, S[SS_id].client_ip);
-                response_packet.PORT = S[SS_id].client_port;
-                strcpy(response_packet.path1, packet.path1);
-                send(client_fd, &response_packet, sizeof(PACKET), 0);
-                // addToCache(cache, packet.path1, S[SS_id].client_ip, S[SS_id].client_port);
-                // printCache(cache);
-                pthread_mutex_unlock(&socket_Wlock);
-
-                close(client_fd);
-
-                if (flag_dir)
-                { // it's a directory
-                    deleteString(S[SS_id].dirs, packet.path1);
-                }
-                else
-                {
-                    deleteString(S[SS_id].files, packet.path1);
-                }
-
-                // send the request packet to the backup SS, with the naming server IP and port
-                struct_type = PACKET_STRUCT;
-                // pthread_mutex_lock(&socket_Wlock);
-                PACKET backup_packet;
-                backup_packet.request_type = DELETE_REQUEST;
-                strcpy(backup_packet.IP, NS_IP);
-                backup_packet.PORT = NS_PORT;
-                strcpy(backup_packet.path1, packet.path1);
-                strcpy(backup_packet.path2, packet.path2);
-                // if(S[SS_id].backupID_1 != -1){
-                //     pthread_mutex_lock(&socket_Wlock);
-                //     connect(S[S[SS_id].backupID_1].SS_Client_socket, (struct sockaddr *)&(S[S[SS_id].backupID_1].SS_addr), sizeof(S[S[SS_id].backupID_1].SS_addr));
-                //     send(S[S[SS_id].backupID_1].SS_Client_socket, &struct_type, sizeof(int), 0);
-                //     send(S[S[SS_id].backupID_1].SS_Client_socket, &backup_packet, sizeof(PACKET), 0);
-                //     pthread_mutex_unlock(&socket_Wlock);
-                // }
-                // if(S[SS_id].backupID_2 != -1){
-                //     pthread_mutex_lock(&socket_Wlock);
-                //     connect(S[S[SS_id].backupID_2].SS_Client_socket, (struct sockaddr *)&(S[S[SS_id].backupID_2].SS_addr), sizeof(S[S[SS_id].backupID_2].SS_addr));
-                //     send(S[S[SS_id].backupID_2].SS_Client_socket, &struct_type, sizeof(int), 0);
-                //     send(S[S[SS_id].backupID_2].SS_Client_socket, &backup_packet, sizeof(PACKET), 0);
-                //     pthread_mutex_unlock(&socket_Wlock);
-                // }
-
-                return NULL;
+                deleteString(S[SS_id].files, packet.path1);
             }
+            
+            // send the request packet to the backup SS, with the naming server IP and port
+            struct_type = PACKET_STRUCT;
+            // pthread_mutex_lock(&socket_Wlock);
+            PACKET backup_packet;
+            backup_packet.request_type = DELETE_REQUEST;
+            strcpy(backup_packet.IP, NS_IP);
+            backup_packet.PORT = NS_PORT;
+            strcpy(backup_packet.path1, packet.path1);
+            strcpy(backup_packet.path2, packet.path2);
+            // if(S[SS_id].backupID_1 != -1){
+            //     pthread_mutex_lock(&socket_Wlock);
+            //     connect(S[S[SS_id].backupID_1].SS_Client_socket, (struct sockaddr *)&(S[S[SS_id].backupID_1].SS_addr), sizeof(S[S[SS_id].backupID_1].SS_addr));
+            //     send(S[S[SS_id].backupID_1].SS_Client_socket, &struct_type, sizeof(int), 0);
+            //     send(S[S[SS_id].backupID_1].SS_Client_socket, &backup_packet, sizeof(PACKET), 0);
+            //     pthread_mutex_unlock(&socket_Wlock);
+            // }
+            // if(S[SS_id].backupID_2 != -1){
+            //     pthread_mutex_lock(&socket_Wlock);
+            //     connect(S[S[SS_id].backupID_2].SS_Client_socket, (struct sockaddr *)&(S[S[SS_id].backupID_2].SS_addr), sizeof(S[S[SS_id].backupID_2].SS_addr));
+            //     send(S[S[SS_id].backupID_2].SS_Client_socket, &struct_type, sizeof(int), 0);
+            //     send(S[S[SS_id].backupID_2].SS_Client_socket, &backup_packet, sizeof(PACKET), 0);
+            //     pthread_mutex_unlock(&socket_Wlock);
+            // }
+
+            return NULL;
         }
+    
     }
     else if ((packet.request_type == READ_REQUEST) || (packet.request_type == STREAM_REQUEST) || (packet.request_type == INFO_REQUEST))
     {
@@ -416,53 +411,54 @@ void *client_handler(void *arg){
             SS_id = entry->SS_id;
             printf("Cache hit for path: %s\n", packet.path1);
             printf("SS_id: %d\n", SS_id);
+            printCache(cache);
         }
         else{
-
-            
-
+            printf("Cache miss for path: %s\n", packet.path1);
             SS_id = read_request_finder(packet.path1);
-            if (SS_id == -1)
-            {
-                // send the error packet to the client
-                int struct_type = PACKET_STRUCT;
-                pthread_mutex_lock(&socket_Wlock);
-                send(client_fd, &struct_type, sizeof(int), 0);
-                PACKET response_packet;
-                response_packet.status = FILE_NOT_FOUND;
-                response_packet.request_type = STATUS_CHECK;
-                strcpy(response_packet.IP, packet.IP);
-                response_packet.PORT = packet.PORT;
-                strcpy(response_packet.path1, packet.path1);
-                send(client_fd, &response_packet, sizeof(PACKET), 0);
-                pthread_mutex_unlock(&socket_Wlock);
-
-                close(client_fd);
-
-                return NULL;
-            }
-            else
-            {
-                addToCache(cache, packet.path1, SS_id);
-                // send the success packet to the client, with the IP and port of the SS
-                int struct_type = PACKET_STRUCT;
-                pthread_mutex_lock(&socket_Wlock);
-                send(client_fd, &struct_type, sizeof(int), 0);
-                PACKET response_packet;
-                response_packet.status = SUCCESS;
-                response_packet.request_type = STATUS_CHECK;
-                strcpy(response_packet.IP, S[SS_id].client_ip);
-                response_packet.PORT = S[SS_id].client_port;
-                strcpy(response_packet.path1, packet.path1);
-                send(client_fd, &response_packet, sizeof(PACKET), 0);
-                // addToCache(cache, packet.path1, S[SS_id].client_ip, S[SS_id].client_port);
-                // printCache(cache);
-                pthread_mutex_unlock(&socket_Wlock);
-            }
+        }
+        if (SS_id == -1)
+        {
+            // send the error packet to the client
+            int struct_type = PACKET_STRUCT;
+            pthread_mutex_lock(&socket_Wlock);
+            send(client_fd, &struct_type, sizeof(int), 0);
+            PACKET response_packet;
+            response_packet.status = FILE_NOT_FOUND;
+            response_packet.request_type = STATUS_CHECK;
+            strcpy(response_packet.IP, packet.IP);
+            response_packet.PORT = packet.PORT;
+            strcpy(response_packet.path1, packet.path1);
+            send(client_fd, &response_packet, sizeof(PACKET), 0);
+            pthread_mutex_unlock(&socket_Wlock);
 
             close(client_fd);
+
             return NULL;
         }
+        else
+        {
+            addToCache(cache, packet.path1, SS_id);
+            printCache(cache);
+            // send the success packet to the client, with the IP and port of the SS
+            int struct_type = PACKET_STRUCT;
+            pthread_mutex_lock(&socket_Wlock);
+            send(client_fd, &struct_type, sizeof(int), 0);
+            PACKET response_packet;
+            response_packet.status = SUCCESS;
+            response_packet.request_type = STATUS_CHECK;
+            strcpy(response_packet.IP, S[SS_id].client_ip);
+            response_packet.PORT = S[SS_id].client_port;
+            strcpy(response_packet.path1, packet.path1);
+            send(client_fd, &response_packet, sizeof(PACKET), 0);
+            // addToCache(cache, packet.path1, S[SS_id].client_ip, S[SS_id].client_port);
+            // printCache(cache);
+            pthread_mutex_unlock(&socket_Wlock);
+        }
+
+        close(client_fd);
+        return NULL;
+    
     }
     else if (packet.request_type == WRITE_REQUEST)
     {
@@ -486,60 +482,64 @@ void *client_handler(void *arg){
         if(entry){
             SS_id = entry->SS_id;
             printf("Cache hit for path: %s\n", packet.path1);
-        }
-            else{
-            SS_id = write_request_finder(packet.path1);
-
             printf("SS_id: %d\n", SS_id);
-
-            if (SS_id == -1)
-            {
-                // send the error packet to the client
-                int struct_type = PACKET_STRUCT;
-                pthread_mutex_lock(&socket_Wlock);
-                send(client_fd, &struct_type, sizeof(int), 0);
-                PACKET response_packet;
-                response_packet.status = FILE_NOT_FOUND;
-                response_packet.request_type = STATUS_CHECK;
-                strcpy(response_packet.IP, packet.IP);
-                response_packet.PORT = packet.PORT;
-                strcpy(response_packet.path1, packet.path1);
-                send(client_fd, &response_packet, sizeof(PACKET), 0);
-                pthread_mutex_unlock(&socket_Wlock);
-
-                close(client_fd);
-
-                return NULL;
-            }
-            else
-            {
-                addToCache(cache, packet.path1, SS_id);
-                // send the success packet to the client, with the IP and port of the SS
-                int struct_type = PACKET_STRUCT;
-                pthread_mutex_lock(&socket_Wlock);
-                send(client_fd, &struct_type, sizeof(int), 0);
-                PACKET response_packet;
-                response_packet.status = SUCCESS;
-                response_packet.request_type = STATUS_CHECK;
-                strcpy(response_packet.IP, S[SS_id].client_ip);
-                response_packet.PORT = S[SS_id].client_port;
-                strcpy(response_packet.path1, packet.path1);
-                send(client_fd, &response_packet, sizeof(PACKET), 0);
-                // addToCache(cache, packet.path1, S[SS_id].client_ip, S[SS_id].client_port);
-                // printCache(cache);
-                pthread_mutex_unlock(&socket_Wlock);
-
-                printf("Write request successful, sent back to client\n");
-
-                close(client_fd);
-
-                // send the request packet to the backup SS, with the naming server IP and port
-
-                // handle the backup SS, asynch write
-
-                return NULL;
-            }
+            printCache(cache);
         }
+        else{
+            printf("Cache miss for path: %s\n", packet.path1);
+            SS_id = write_request_finder(packet.path1);
+        }
+        printf("SS_id: %d\n", SS_id);
+
+        if (SS_id == -1)
+        {
+            // send the error packet to the client
+            int struct_type = PACKET_STRUCT;
+            pthread_mutex_lock(&socket_Wlock);
+            send(client_fd, &struct_type, sizeof(int), 0);
+            PACKET response_packet;
+            response_packet.status = FILE_NOT_FOUND;
+            response_packet.request_type = STATUS_CHECK;
+            strcpy(response_packet.IP, packet.IP);
+            response_packet.PORT = packet.PORT;
+            strcpy(response_packet.path1, packet.path1);
+            send(client_fd, &response_packet, sizeof(PACKET), 0);
+            pthread_mutex_unlock(&socket_Wlock);
+
+            close(client_fd);
+
+            return NULL;
+        }
+        else
+        {
+            addToCache(cache, packet.path1, SS_id);  
+            printCache(cache);
+            // send the success packet to the client, with the IP and port of the SS
+            int struct_type = PACKET_STRUCT;
+            pthread_mutex_lock(&socket_Wlock);
+            send(client_fd, &struct_type, sizeof(int), 0);
+            PACKET response_packet;
+            response_packet.status = SUCCESS;
+            response_packet.request_type = STATUS_CHECK;
+            strcpy(response_packet.IP, S[SS_id].client_ip);
+            response_packet.PORT = S[SS_id].client_port;
+            strcpy(response_packet.path1, packet.path1);
+            send(client_fd, &response_packet, sizeof(PACKET), 0);
+            // addToCache(cache, packet.path1, S[SS_id].client_ip, S[SS_id].client_port);
+            // printCache(cache);
+            pthread_mutex_unlock(&socket_Wlock);
+
+            printf("Write request successful, sent back to client\n");
+
+            close(client_fd);
+
+            // send the request packet to the backup SS, with the naming server IP and port
+
+            // handle the backup SS, asynch write
+
+            return NULL;
+        }
+    
     }
     else if (packet.request_type == LIST_REQUEST)
     {
@@ -990,7 +990,6 @@ void *client_handler(void *arg){
 
         return NULL;
     }
-
     pthread_mutex_unlock(&socket_Rlock);
     return NULL;
 }
